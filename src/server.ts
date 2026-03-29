@@ -2,6 +2,9 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import { connectDB } from "./config/db";
+import { initializeFirebase } from "./config/firebase";
+import { authMiddleware } from "./middleware/auth.middleware";
+import authRoutes from "./routes/auth.routes";
 import tripRoutes from "./routes/trip.routes";
 import participantRoutes from "./routes/participant.routes";
 import expenseRoutes from "./routes/expense.routes";
@@ -15,6 +18,15 @@ app.use(express.json());
 
 // connect DB
 connectDB();
+
+// initialize Firebase Admin SDK
+initializeFirebase();
+
+// auth routes (auth middleware applied inside the route file)
+app.use("/api/auth", authRoutes);
+
+// protect all other /api/* routes
+app.use("/api", authMiddleware);
 
 // trip routes
 app.use("/api/trips", tripRoutes);

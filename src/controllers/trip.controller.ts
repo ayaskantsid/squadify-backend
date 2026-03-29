@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { Trip } from "../models/trip.model";
+import { User } from "../models/user.model";
 import mongoose from "mongoose";
 import { Expense } from "../models/expense.model";
 
@@ -7,12 +8,22 @@ export async function createTrip(req: Request, res: Response) {
   try {
     const { name, description, startDate, endDate } = req.body;
 
+    // Look up the authenticated user to set createdBy
+    let createdBy: mongoose.Types.ObjectId | undefined;
+    if (req.user?.uid) {
+      const user = await User.findOne({ firebaseUid: req.user.uid });
+      if (user) {
+        createdBy = user._id as mongoose.Types.ObjectId;
+      }
+    }
+
     const trip = await Trip.create({
       name,
       description,
       startDate,
       endDate,
       participants: [],
+      createdBy,
     });
 
     res.status(201).json(trip);
@@ -46,7 +57,7 @@ export async function getTrips(req: Request, res: Response) {
 export async function getTripById(req: Request, res: Response) {
   try {
     const trip = await Trip.findById(req.params.id).populate('participants');
-    if(trip) {
+    if (trip) {
       const totalExpense = await Expense.aggregate([
         { $match: { tripId: new mongoose.Types.ObjectId(req.params.id) } },
         { $group: { _id: null, total: { $sum: "$amount" } } }
