@@ -1,489 +1,631 @@
 # Squadify Backend API Documentation
 
-> Base URL: `https://squadify-backend-z8mw.onrender.com`
+## Overview
+Squadify is a trip expense-sharing application backend built with Express.js, TypeScript, and MongoDB. It supports trip management with role-based access control, participant invitations, and expense tracking.
 
-This repository exposes the Squadify backend REST API for managing trips, participants, expenses, and balance calculations.
+## Authentication
 
----
+All API endpoints (except `/api/auth/me`) require Firebase authentication. Include the Firebase ID token in the `Authorization` header:
 
-## Health Check
-
-- `GET /`
-- Response: plain text message
-
-```bash
-curl https://squadify-backend-z8mw.onrender.com/
+```
+Authorization: Bearer <firebase_id_token>
 ```
 
+### Authentication Flow
+- Users sign in via Firebase (Google/Phone)
+- Frontend receives Firebase ID token
+- Include token in all subsequent API requests
+- Backend verifies token and extracts user UID and email
+
 ---
 
-## Trips
+## API Endpoints
 
-### Create Trip
+### Auth Endpoints
 
-- `POST /api/trips`
-- Body:
+#### Login / Register User
+- **POST** `/api/auth/me`
+- **Description**: Create or update the authenticated user in MongoDB after Firebase sign-in
+- **Auth**: Required
+- **Request Body**:
   ```json
   {
-    "name": "Beach Trip",
-    "description": "Friends weekend getaway",
-    "startDate": "2026-06-01",
-    "endDate": "2026-06-05"
+    "displayName": "John Doe"
   }
   ```
-- Success response: `201`
+- **Response** (200):
   ```json
   {
-    "_id": "642...",
-    "name": "Beach Trip",
-    "description": "Friends weekend getaway",
-    "startDate": "2026-06-01T00:00:00.000Z",
-    "endDate": "2026-06-05T00:00:00.000Z",
-    "participants": [],
-    "createdAt": "2026-06-02T00:00:00.000Z",
-    "updatedAt": "2026-06-02T00:00:00.000Z",
-    "__v": 0
+    "_id": "user-id",
+    "firebaseUid": "firebase-uid",
+    "email": "user@example.com",
+    "displayName": "John Doe",
+    "phoneNumber": "+1234567890",
+    "createdAt": "2026-06-03T10:00:00Z"
   }
   ```
+- **Notes**:
+  - This endpoint is called after Firebase Google or phone sign-in
+  - If the user was previously invited by email, pending invitations are auto-linked and accepted
 
-### List Trips
+---
 
-- `GET /api/trips`
-- Query parameters:
-  - `page` (optional, default `1`)
-  - `limit` (optional, default `10`)
-- Success response: `200`
+### Trip Endpoints
+
+#### Create Trip
+- **POST** `/api/trips`
+- **Description**: Create a new trip (user becomes admin)
+- **Auth**: Required
+- **Request Body**:
+  ```json
+  {
+    "name": "Summer Vacation",
+    "description": "Beach trip with friends",
+    "startDate": "2026-07-01T00:00:00Z",
+    "endDate": "2026-07-10T00:00:00Z"
+  }
+  ```
+- **Response** (201):
+  ```json
+  {
+    "_id": "trip-id",
+    "name": "Summer Vacation",
+    "description": "Beach trip with friends",
+    "startDate": "2026-07-01T00:00:00Z",
+    "endDate": "2026-07-10T00:00:00Z",
+    "createdBy": "user-id",
+    "createdAt": "2026-06-03T10:00:00Z"
+  }
+  ```
+- **Notes**: 
+  - Creator is automatically added as an admin participant
+  - Only invited users can see this trip
+
+#### Get All User's Trips
+- **GET** `/api/trips?page=1&limit=10`
+- **Description**: Get trips where user is an accepted participant
+- **Auth**: Required
+- **Query Parameters**:
+  - `page` (optional): Page number (default: 1)
+  - `limit` (optional): Items per page (default: 10)
+- **Response** (200):
   ```json
   {
     "trips": [
       {
-        "_id": "642...",
-        "name": "Beach Trip",
-        "description": "Friends weekend getaway",
-        "startDate": "2026-06-01T00:00:00.000Z",
-        "endDate": "2026-06-05T00:00:00.000Z",
-        "participants": [],
-        "createdAt": "2026-06-02T00:00:00.000Z",
-        "updatedAt": "2026-06-02T00:00:00.000Z",
-        "__v": 0
+        "_id": "trip-id",
+        "name": "Summer Vacation",
+        "description": "Beach trip",
+        "startDate": "2026-07-01T00:00:00Z",
+        "endDate": "2026-07-10T00:00:00Z",
+        "createdBy": "user-id",
+        "createdAt": "2026-06-03T10:00:00Z"
       }
     ],
-    "totalCount": 1,
-    "hasMore": false
+    "totalCount": 5,
+    "hasMore": true
   }
   ```
+- **Notes**: 
+  - Only returns trips where user status is "accepted"
+  - Does not include invitations that are pending or declined
 
-### Get Trip by ID
-
-- `GET /api/trips/:id`
-- Response includes trip details plus aggregated expense data
-- Success response: `200`
+#### Get Trip by ID
+- **GET** `/api/trips/:id`
+- **Description**: Get trip details with expense summary
+- **Auth**: Required
+- **Response** (200):
   ```json
   {
-    "_id": "642...",
-    "name": "Beach Trip",
-    "description": "Friends weekend getaway",
-    "startDate": "2026-06-01T00:00:00.000Z",
-    "endDate": "2026-06-05T00:00:00.000Z",
-    "participants": [],
-    "createdAt": "2026-06-02T00:00:00.000Z",
-    "updatedAt": "2026-06-02T00:00:00.000Z",
-    "totalExpense": 250.0,
-    "noOfExpenses": 3,
-    "__v": 0
+    "_id": "trip-id",
+    "name": "Summer Vacation",
+    "description": "Beach trip",
+    "startDate": "2026-07-01T00:00:00Z",
+    "endDate": "2026-07-10T00:00:00Z",
+    "createdBy": "user-id",
+    "createdAt": "2026-06-03T10:00:00Z",
+    "totalExpense": 1500.00,
+    "noOfExpenses": 12
   }
   ```
+- **Errors**:
+  - 403: User is not an accepted participant
+  - 404: Trip not found
+- **Notes**: 
+  - User must be an accepted participant to view trip details
 
-### Update Trip
-
-- `PUT /api/trips/:id`
-- Body: any trip fields to update
+#### Update Trip
+- **PUT** `/api/trips/:id`
+- **Description**: Update trip details (admin only)
+- **Auth**: Required
+- **Request Body** (all optional):
   ```json
   {
-    "name": "Updated Beach Trip",
-    "description": "Updated description"
-  }
-  ```
-- Success response: `200`
-  ```json
-  {
-    "_id": "642...",
-    "name": "Updated Beach Trip",
+    "name": "Updated Trip Name",
     "description": "Updated description",
-    "startDate": "2026-06-01T00:00:00.000Z",
-    "endDate": "2026-06-05T00:00:00.000Z",
-    "participants": [],
-    "createdAt": "2026-06-02T00:00:00.000Z",
-    "updatedAt": "2026-06-02T00:00:00.000Z",
-    "__v": 0
+    "startDate": "2026-07-01T00:00:00Z",
+    "endDate": "2026-07-10T00:00:00Z"
   }
   ```
+- **Response** (200): Updated trip object
+- **Errors**:
+  - 403: User is not trip admin
+  - 404: Trip not found
 
-### Delete Trip
-
-- `DELETE /api/trips/:id`
-- Success response: `200`
+#### Delete Trip
+- **DELETE** `/api/trips/:id`
+- **Description**: Delete trip and all associated data (admin only)
+- **Auth**: Required
+- **Response** (200):
   ```json
   {
     "message": "Trip deleted successfully"
   }
   ```
+- **Errors**:
+  - 403: User is not trip admin
+  - 404: Trip not found
+- **Notes**: 
+  - Also deletes all participant records
+  - Should cascade delete expenses (if configured in model)
 
 ---
 
-## Participants
+### Participant Endpoints
 
-### Create Participant
-
-- `POST /api/participants`
-- Body:
+#### Invite User to Trip
+- **POST** `/api/participants/invite`
+- **Description**: Send trip invitation to user by email (admin only)
+- **Auth**: Required
+- **Request Body**:
   ```json
   {
-    "name": "Alicia",
-    "email": "alicia@example.com",
-    "phone": "+1234567890",
-    "tripId": "642..."
+    "tripId": "trip-id",
+    "userEmail": "friend@example.com"
   }
   ```
-- Success response: `201`
+- **Response** (201):
   ```json
   {
-    "message": "Participant created successfully",
+    "message": "Invitation sent successfully",
     "participant": {
-      "_id": "642...",
-      "name": "Alicia",
-      "email": "alicia@example.com",
-      "phone": "+1234567890",
-      "tripId": "642...",
-      "createdAt": "2026-06-02T00:00:00.000Z",
-      "updatedAt": "2026-06-02T00:00:00.000Z",
-      "__v": 0
+      "_id": "participant-id",
+      "tripId": "trip-id",
+      "role": "participant",
+      "status": "invited",
+      "email": "friend@example.com",
+      "invitedAt": "2026-06-03T10:00:00Z"
     }
   }
   ```
+- **Notes**:
+  - The invited user does not need to already exist in the database
+  - If the invited email later signs in with Firebase, pending invitations are auto-linked and accepted
+- **Errors**:
+  - 400: User already a participant or invitation already sent
+  - 403: Current user is not trip admin
+  - 404: Trip not found
 
-### Get Participants by Trip
-
-- `GET /api/participants/trip/:tripId`
-- Success response: `200`
+#### Get Trip Participants
+- **GET** `/api/participants/trip/:tripId`
+- **Description**: List all participants in a trip
+- **Auth**: Required
+- **Response** (200):
   ```json
   [
     {
-      "_id": "642...",
-      "name": "Alicia",
-      "email": "alicia@example.com",
-      "phone": "+1234567890",
-      "tripId": "642...",
-      "createdAt": "2026-06-02T00:00:00.000Z",
-      "updatedAt": "2026-06-02T00:00:00.000Z",
-      "__v": 0
+      "_id": "participant-id",
+      "userId": {
+        "_id": "user-id",
+        "displayName": "John Doe",
+        "email": "john@example.com",
+        "phoneNumber": "+1234567890"
+      },
+      "tripId": "trip-id",
+      "role": "admin",
+      "status": "accepted",
+      "invitedAt": "2026-06-03T10:00:00Z",
+      "acceptedAt": "2026-06-03T10:05:00Z"
     }
   ]
   ```
+- **Errors**:
+  - 403: User is not an accepted participant of this trip
+  - 404: Trip not found or no participants
+- **Notes**: 
+  - Only participants of the trip can view participant list
+  - Shows full user details for each participant
 
-### Get Participant by ID
-
-- `GET /api/participants/:id`
-- Success response: `200`
+#### Get Single Participant
+- **GET** `/api/participants/:id`
+- **Description**: Get specific participant record
+- **Auth**: Required
+- **Response** (200):
   ```json
   {
-    "_id": "642...",
-    "name": "Alicia",
-    "email": "alicia@example.com",
-    "phone": "+1234567890",
-    "tripId": "642...",
-    "createdAt": "2026-06-02T00:00:00.000Z",
-    "updatedAt": "2026-06-02T00:00:00.000Z",
-    "__v": 0
-  }
-  ```
-
-### Update Participant
-
-- `PUT /api/participants/:id`
-- Body: any participant fields to update
-  ```json
-  {
-    "phone": "+0987654321"
-  }
-  ```
-- Success response: `200`
-  ```json
-  {
-    "_id": "642...",
-    "name": "Alicia",
-    "email": "alicia@example.com",
-    "phone": "+0987654321",
-    "tripId": "642...",
-    "createdAt": "2026-06-02T00:00:00.000Z",
-    "updatedAt": "2026-06-02T00:00:00.000Z",
-    "__v": 0
-  }
-  ```
-
-### Delete Participant
-
-- `DELETE /api/participants/:id`
-- Success response: `200`
-  ```json
-  {
-    "message": "Participant deleted successfully"
-  }
-  ```
-
----
-
-## Expenses
-
-### Get Expenses by Trip
-
-- `GET /api/expenses/trip/:tripId`
-- Success response: `200`
-  ```json
-  [
-    {
-      "_id": "642...",
-      "tripId": "642...",
-      "description": "Dinner",
-      "amount": 120,
-      "paidBy": {
-        "_id": "642...",
-        "name": "Alicia"
-      },
-      "expenseDate": "2026-06-02T00:00:00.000Z",
-      "splits": [
-        {
-          "participantId": {
-            "_id": "642...",
-            "name": "Alicia"
-          },
-          "share": 40
-        }
-      ],
-      "createdAt": "2026-06-02T00:00:00.000Z",
-      "updatedAt": "2026-06-02T00:00:00.000Z",
-      "__v": 0,
-      "splitType": "equal"
-    }
-  ]
-  ```
-
-### Get Expense by ID
-
-- `GET /api/expenses/:id`
-- Success response: `200`
-  ```json
-  {
-    "message": "Expense details fetched successfully.",
-    "data": {
-      "_id": "642...",
-      "tripId": "642...",
-      "description": "Dinner",
-      "amount": 120,
-      "paidBy": {
-        "_id": "642...",
-        "name": "Alicia"
-      },
-      "expenseDate": "2026-06-02T00:00:00.000Z",
-      "splits": [
-        {
-          "participantId": {
-            "_id": "642...",
-            "name": "Alicia"
-          },
-          "share": 40
-        }
-      ],
-      "createdAt": "2026-06-02T00:00:00.000Z",
-      "updatedAt": "2026-06-02T00:00:00.000Z",
-      "__v": 0,
-      "splitType": "equal"
-    }
-  }
-  ```
-
-### Add Expense
-
-- `POST /api/expenses`
-- Body:
-  ```json
-  {
-    "tripId": "642...",
-    "paidBy": "643...",
-    "description": "Lunch",
-    "amount": 90,
-    "expenseDate": "2026-06-02",
-    "splits": [
-      { "participantId": "643...", "share": 30 },
-      { "participantId": "644...", "share": 30 },
-      { "participantId": "645...", "share": 30 }
-    ]
-  }
-  ```
-- Notes:
-  - `tripId`, `paidBy`, `amount`, and `expenseDate` are required.
-  - If `splits` is omitted or empty, the system splits the amount equally among all trip participants.
-  - Custom splits must sum exactly to `amount`.
-- Success response: `201`
-  ```json
-  {
-    "message": "Expense added successfully.",
-    "data": {
-      "_id": "642...",
-      "tripId": "642...",
-      "description": "Lunch",
-      "amount": 90,
-      "paidBy": "643...",
-      "expenseDate": "2026-06-02T00:00:00.000Z",
-      "splits": [
-        { "participantId": "643...", "share": 30 },
-        { "participantId": "644...", "share": 30 },
-        { "participantId": "645...", "share": 30 }
-      ],
-      "createdAt": "2026-06-02T00:00:00.000Z",
-      "updatedAt": "2026-06-02T00:00:00.000Z",
-      "__v": 0,
-      "splitType": "custom"
-    }
-  }
-  ```
-
-### Update Expense
-
-- `PUT /api/expenses/:id`
-- Body: any expense fields to update
-  ```json
-  {
-    "description": "Dinner updated",
-    "amount": 100
-  }
-  ```
-- Success response: `200`
-  ```json
-  {
-    "message": "Expense updated successfully",
-    "expense": {
-      "_id": "642...",
-      "tripId": "642...",
-      "description": "Dinner updated",
-      "amount": 100,
-      "paidBy": {
-        "_id": "643...",
-        "name": "Alicia"
-      },
-      "expenseDate": "2026-06-02T00:00:00.000Z",
-      "splits": [
-        {
-          "participantId": {
-            "_id": "643...",
-            "name": "Alicia"
-          },
-          "share": 50
-        }
-      ],
-      "createdAt": "2026-06-02T00:00:00.000Z",
-      "updatedAt": "2026-06-02T00:00:00.000Z",
-      "__v": 0,
-      "splitType": "custom"
-    }
-  }
-  ```
-
-### Delete Expense
-
-- `DELETE /api/expenses/:id`
-- Success response: `200`
-  ```json
-  {
-    "message": "Expense deleted successfully"
-  }
-  ```
-
----
-
-## Balances
-
-### Get Trip Balances
-
-- `GET /api/balances/:tripId`
-- Response: list of participant balances
-- Success response: `200`
-  ```json
-  [
-    {
-      "participantId": "643...",
-      "name": "Alicia",
-      "balance": 30.0
+    "_id": "participant-id",
+    "userId": {
+      "_id": "user-id",
+      "displayName": "John Doe",
+      "email": "john@example.com"
     },
+    "tripId": "trip-id",
+    "role": "participant",
+    "status": "accepted",
+    "invitedAt": "2026-06-03T10:00:00Z",
+    "acceptedAt": "2026-06-03T10:05:00Z"
+  }
+  ```
+
+#### Accept Invitation
+- **PATCH** `/api/participants/accept`
+- **Description**: Accept a pending trip invitation
+- **Auth**: Required
+- **Request Body**:
+  ```json
+  {
+    "participantId": "participant-id"
+  }
+  ```
+- **Response** (200):
+  ```json
+  {
+    "message": "Invitation accepted successfully",
+    "participant": {
+      "_id": "participant-id",
+      "userId": "user-id",
+      "tripId": "trip-id",
+      "role": "participant",
+      "status": "accepted",
+      "invitedAt": "2026-06-03T10:00:00Z",
+      "acceptedAt": "2026-06-03T10:05:00Z"
+    }
+  }
+  ```
+- **Errors**:
+  - 400: Invitation not in pending state
+  - 403: User can only accept their own invitations
+  - 404: Invitation not found
+
+#### Decline Invitation
+- **PATCH** `/api/participants/decline`
+- **Description**: Decline a pending trip invitation
+- **Auth**: Required
+- **Request Body**:
+  ```json
+  {
+    "participantId": "participant-id"
+  }
+  ```
+- **Response** (200):
+  ```json
+  {
+    "message": "Invitation declined successfully",
+    "participant": {
+      "_id": "participant-id",
+      "userId": "user-id",
+      "tripId": "trip-id",
+      "role": "participant",
+      "status": "declined",
+      "invitedAt": "2026-06-03T10:00:00Z",
+      "declinedAt": "2026-06-03T10:05:00Z"
+    }
+  }
+  ```
+- **Errors**:
+  - 400: Invitation not in pending state
+  - 403: User can only decline their own invitations
+  - 404: Invitation not found
+
+#### Get Pending Invitations
+- **GET** `/api/participants/invitations/pending`
+- **Description**: Get all pending trip invitations for current user
+- **Auth**: Required
+- **Response** (200):
+  ```json
+  [
     {
-      "participantId": "644...",
-      "name": "Brian",
-      "balance": -15.0
+      "_id": "participant-id",
+      "userId": "current-user-id",
+      "tripId": {
+        "_id": "trip-id",
+        "name": "Summer Vacation",
+        "description": "Beach trip",
+        "startDate": "2026-07-01T00:00:00Z",
+        "endDate": "2026-07-10T00:00:00Z"
+      },
+      "role": "participant",
+      "status": "invited",
+      "invitedAt": "2026-06-03T10:00:00Z"
     }
   ]
   ```
 
-### Get Minimal Settlements
-
-- `GET /api/balances/:tripId/settlements`
-- Response: balances before and after settlement plus suggested transactions
-- Success response: `200`
+#### Remove Participant
+- **DELETE** `/api/participants/:participantId`
+- **Description**: Remove user from trip (admin only)
+- **Auth**: Required
+- **Response** (200):
   ```json
   {
-    "balanceBeforeSettlement": [
-      {
-        "participantId": "643...",
-        "name": "Alicia",
-        "balance": 30.0
-      },
-      {
-        "participantId": "644...",
-        "name": "Brian",
-        "balance": -15.0
-      }
-    ],
-    "balances": [
-      {
-        "participantId": "643...",
-        "name": "Alicia",
-        "balance": 0
-      },
-      {
-        "participantId": "644...",
-        "name": "Brian",
-        "balance": 0
-      }
-    ],
-    "settlements": [
-      {
-        "from": "Brian",
-        "to": "Alicia",
-        "amount": 15.0
-      }
-    ]
+    "message": "Participant removed successfully"
   }
   ```
+- **Errors**:
+  - 403: User is not trip admin
+  - 404: Participant not found
+- **Notes**: 
+  - Only trip admin can remove participants
+  - Cannot remove trip creator (admin)
 
 ---
 
-## Notes
+### Expense Endpoints
 
-- All date values are stored as ISO 8601 timestamps.
-- `tripId`, `paidBy`, and participant IDs are MongoDB ObjectId strings.
-- Validation errors return `400` with an error message.
-- Not found resources return `404`.
-- Server errors return `500`.
+#### Create Expense
+- **POST** `/api/expenses`
+- **Description**: Create new trip expense
+- **Auth**: Required
+- **Request Body**:
+  ```json
+  {
+    "tripId": "trip-id",
+    "description": "Hotel booking",
+    "amount": 300.00,
+    "currency": "USD",
+    "paidBy": "user-id"
+  }
+  ```
+- **Response** (201): Expense object
+
+#### Get Trip Expenses
+- **GET** `/api/expenses/trip/:tripId`
+- **Description**: Get all expenses for a trip
+- **Auth**: Required
+- **Response** (200): Array of expense objects
+
+#### Get Expense by ID
+- **GET** `/api/expenses/:id`
+- **Description**: Get specific expense details
+- **Auth**: Required
+- **Response** (200): Expense object
+
+#### Update Expense
+- **PUT** `/api/expenses/:id`
+- **Description**: Update expense details
+- **Auth**: Required
+- **Request Body** (optional fields):
+  ```json
+  {
+    "description": "Updated description",
+    "amount": 350.00
+  }
+  ```
+- **Response** (200): Updated expense object
+
+#### Delete Expense
+- **DELETE** `/api/expenses/:id`
+- **Description**: Delete expense
+- **Auth**: Required
+- **Response** (200): Success message
 
 ---
 
-## Example cURL
+### Balance Endpoints
 
-```bash
-curl -X POST https://squadify-backend-z8mw.onrender.com/api/trips \
-  -H "Content-Type: application/json" \
-  -d '{"name":"Beach Trip","description":"Weekend getaway","startDate":"2026-06-01","endDate":"2026-06-05"}'
+#### Get Settlement
+- **GET** `/api/balances/trip/:tripId`
+- **Description**: Get settlement details for a trip
+- **Auth**: Required
+- **Response** (200): Settlement breakdown
+
+---
+
+## Database Models
+
+### User
+```typescript
+{
+  _id: ObjectId,
+  firebaseUid: string (unique),
+  email: string (unique),
+  phoneNumber: string,
+  displayName: string,
+  createdAt: Date,
+  updatedAt: Date
+}
 ```
 
-```bash
-curl https://squadify-backend-z8mw.onrender.com/api/balances/642...
+### Trip
+```typescript
+{
+  _id: ObjectId,
+  name: string,
+  description: string,
+  startDate: Date,
+  endDate: Date,
+  createdBy: ObjectId (ref: User),
+  createdAt: Date,
+  updatedAt: Date
+}
 ```
+
+### Participant
+```typescript
+{
+  _id: ObjectId,
+  userId: ObjectId (ref: User),
+  tripId: ObjectId (ref: Trip),
+  role: "admin" | "participant",
+  status: "invited" | "accepted" | "declined",
+  invitedAt: Date,
+  acceptedAt: Date (optional),
+  declinedAt: Date (optional),
+  createdAt: Date,
+  updatedAt: Date
+}
+```
+**Unique Index**: `userId + tripId` (prevents duplicate entries)
+
+### Expense
+```typescript
+{
+  _id: ObjectId,
+  tripId: ObjectId (ref: Trip),
+  description: string,
+  amount: number,
+  currency: string,
+  paidBy: ObjectId (ref: User),
+  createdAt: Date,
+  updatedAt: Date
+}
+```
+
+---
+
+## Access Control Rules
+
+### Trip Access
+- **View Trip**: User must be accepted participant
+- **Update Trip**: User must be trip admin
+- **Delete Trip**: User must be trip admin
+- **See Participants**: User must be accepted participant
+
+## Backend Authorization Middlewares
+
+- `authMiddleware`: verifies Firebase ID token and populates `req.user` with Firebase claims.
+- `resolveCurrentUser`: resolves MongoDB `User` by `firebaseUid` and attaches it to `req.currentUser` (returns 401 if not found).
+- `requireAcceptedParticipant`: ensures the current user is a participant with `status: accepted` for the target trip (returns 403 otherwise).
+- `requireTripAdmin`: ensures the current user is a participant with `role: admin` and `status: accepted` for the target trip (returns 403 otherwise).
+
+Notes:
+- These checks run on the server — the frontend must not assume access control.
+- `tripId` is read from `params.tripId`, `params.id`, `body.tripId`, or inferred from `participantId`/`expenseId` when applicable.
+
+### Participant Management
+- **Invite User**: Must be trip admin
+- **Accept/Decline**: Only the invited user
+- **Remove Participant**: Must be trip admin
+- **View Invitations**: Own pending invitations only
+
+---
+
+## Error Responses
+
+All errors follow this format:
+
+```json
+{
+  "message": "Error description",
+  "error": "Detailed error info (optional)"
+}
+```
+
+### Common HTTP Status Codes
+- **200**: Success
+- **201**: Created
+- **400**: Bad Request (invalid input)
+- **401**: Unauthorized (missing/invalid token)
+- **403**: Forbidden (insufficient permissions)
+- **404**: Not Found
+- **500**: Internal Server Error
+
+---
+
+## Environment Variables
+
+```env
+# Server Configuration
+PORT=5000
+HOST=0.0.0.0
+
+# Database
+MONGODB_URI=mongodb+srv://user:password@cluster.mongodb.net/squadify
+
+# Firebase
+FIREBASE_PROJECT_ID=your-firebase-project
+FIREBASE_PRIVATE_KEY=your-firebase-key
+FIREBASE_CLIENT_EMAIL=your-firebase-email
+
+# Email Service (Resend)
+RESEND_API_KEY=re_your_resend_api_key
+RESEND_FROM_EMAIL=noreply@yourdomain.com
+
+# Frontend
+FRONTEND_URL=http://localhost:3000
+```
+
+### Resend Setup
+
+1. Sign up at [Resend.com](https://resend.com)
+2. Get your API key from the dashboard
+3. Verify your sending domain (or use default Resend domain)
+4. Add to `.env`:
+   ```
+   RESEND_API_KEY=re_your_key_here
+   RESEND_FROM_EMAIL=noreply@yourdomain.com
+   ```
+
+5. Install Resend package:
+   ```bash
+   npm install resend
+   ```
+
+---
+
+## Setup & Running
+
+### Install Dependencies
+```bash
+npm install
+```
+
+### Development
+```bash
+npm run dev
+```
+
+### Build
+```bash
+npm run build
+```
+
+### Production
+```bash
+npm start
+```
+
+---
+
+## Key Changes from Previous API
+
+### Breaking Changes
+1. **Participant Model**: No longer stores generic contact info (name, email, phone)
+   - Now links to actual User records via `userId`
+   - Adds `role` and `status` fields
+
+2. **Trip Endpoints**:
+   - `GET /api/trips` now filters by authenticated user
+   - All trip endpoints require authentication
+   - Deleted trips cascade delete participants
+
+3. **Participant Endpoints**:
+   - Removed: `POST /api/participants` (generic create)
+   - Removed: `PUT /api/participants/:id` (update)
+   - Added: `POST /api/participants/invite` (invite by email)
+   - Added: `PATCH /api/participants/accept` (accept invitation)
+   - Added: `PATCH /api/participants/decline` (decline invitation)
+   - Added: `GET /api/participants/invitations/pending` (pending invites)
+   - Renamed: `DELETE /api/participants/:id` → `DELETE /api/participants/:participantId`
+
+### Migration Guide
+If you have existing data:
+1. Migrate participant records to reference existing User documents by email matching
+2. Set `role` = "admin" for trip creators, "participant" for others
+3. Set `status` = "accepted" for all existing participants
+4. Remove old generic participant fields
+
+---
+
+## Support
+For issues or questions, contact the development team.
