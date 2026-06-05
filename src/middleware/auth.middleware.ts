@@ -8,6 +8,7 @@ declare global {
             user?: {
                 uid: string;
                 phoneNumber?: string;
+                email?: string;
             };
         }
     }
@@ -33,6 +34,7 @@ export async function authMiddleware(
         req.user = {
             uid: decodedToken.uid,
             phoneNumber: decodedToken.phone_number,
+            email: decodedToken.email,
         };
 
         next();

@@ -6,8 +6,7 @@ export interface ITrip extends Document {
   description?: string;
   startDate?: Date;
   endDate?: Date;
-  participants: Types.ObjectId[];
-  createdBy?: Types.ObjectId;
+  createdBy: Types.ObjectId;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -18,8 +17,7 @@ const tripSchema = new Schema<ITrip>(
     description: { type: String, trim: true },
     startDate: { type: Date },
     endDate: { type: Date },
-    participants: [{ type: Schema.Types.ObjectId, ref: "Participant", required: false }],
-    createdBy: { type: Schema.Types.ObjectId, ref: "User", required: false }
+    createdBy: { type: Schema.Types.ObjectId, ref: "User", required: true }
   },
   { timestamps: true }
 );
