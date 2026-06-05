@@ -1,10 +1,10 @@
-import crypto from "crypto";
+// token-based invites removed for MVP; invitations are stored in Invitation model
 import { Request, Response } from "express";
 import { Participant } from "../models/participant.model";
 import { Trip } from "../models/trip.model";
 import { User } from "../models/user.model";
 import mongoose from "mongoose";
-import { sendTripInvitationEmail, sendInvitationAcceptedEmail } from "../services/mail.service";
+import { sendInvitationAcceptedEmail } from "../services/mail.service";
 
 // ✅ Invite a user to a trip (Admin only)
 export const inviteParticipant = async (req: Request, res: Response) => {
@@ -54,10 +54,8 @@ export const inviteParticipant = async (req: Request, res: Response) => {
 
     let participant = await Participant.findOne(participantQuery);
 
-    const invitationToken = crypto.randomUUID();
     const participantData: any = {
       tripId: tripId,
-      invitationToken,
       role: "participant",
       status: "invited",
       invitedAt: new Date(),
@@ -74,7 +72,6 @@ export const inviteParticipant = async (req: Request, res: Response) => {
       }
 
       participant.status = "invited";
-      participant.invitationToken = invitationToken;
       participant.invitedAt = new Date();
       participant.acceptedAt = undefined;
       participant.declinedAt = undefined;
@@ -86,27 +83,13 @@ export const inviteParticipant = async (req: Request, res: Response) => {
 
       await participant.save();
     } else {
-      participant = await Participant.create(participantData);
-    }
+      const participant = await Participant.create(participantData);
 
-    // Send invitation email
-    try {
-      await sendTripInvitationEmail({
-        recipientEmail: userEmail,
-        recipientName: invitedUser?.displayName || "there",
-        tripName: trip.name,
-        inviterName: currentUser.displayName || "A friend",
-        invitationToken,
+      res.status(201).json({
+        message: "Invitation sent successfully",
+        participant,
       });
-    } catch (emailError) {
-      console.error("Failed to send invitation email:", emailError);
-      // Don't fail the request if email fails, just log it
     }
-
-    res.status(201).json({
-      message: "Invitation sent successfully",
-      participant,
-    });
   } catch (err) {
     console.error("Error inviting participant:", err);
     res.status(500).json({ error: (err as Error).message });

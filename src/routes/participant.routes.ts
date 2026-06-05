@@ -8,9 +8,11 @@ import {
   getPendingInvitations,
   removeParticipant,
 } from "../controllers/participant.controller";
+import { createInvitation } from "../controllers/invitation.controller";
 import { authMiddleware } from "../middleware/auth.middleware";
 import resolveCurrentUser from "../middleware/user.middleware";
 import { requireAcceptedParticipant, requireTripAdmin } from "../middleware/authorization.middleware";
+import invitationRoutes from "./invitation.routes";
 
 const router = Router();
 
@@ -18,23 +20,18 @@ const router = Router();
 router.use(authMiddleware);
 router.use(resolveCurrentUser);
 
-// Invite user to trip (admin only)
-router.post("/invite", requireTripAdmin, inviteParticipant);
+// expose invitation endpoints under /api/participants/invitations
+router.use("/invitations", invitationRoutes);
+
+// Invite user to trip (admin only) — use invitation workflow
+router.post("/invite", requireTripAdmin, createInvitation);
 
 // Get all participants for a trip
 router.get("/trip/:tripId", requireAcceptedParticipant, getParticipantsByTrip);
 
-// Get pending invitations for current user (must come BEFORE /:id route)
-router.get("/invitations/pending", getPendingInvitations);
-
 // Get single participant
 router.get("/:id", getParticipantById);
 
-// Accept invitation
-router.patch("/accept", acceptInvitation);
-
-// Decline invitation
-router.patch("/decline", declineInvitation);
 
 // Remove participant from trip (admin only)
 router.delete("/:participantId", requireTripAdmin, removeParticipant);

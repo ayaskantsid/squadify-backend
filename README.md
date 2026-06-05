@@ -46,7 +46,7 @@ Authorization: Bearer <firebase_id_token>
   ```
 - **Notes**:
   - This endpoint is called after Firebase Google or phone sign-in
-  - If the user was previously invited by email, pending invitations are auto-linked and accepted
+  - If the user was previously invited by email, pending invitations are auto-linked to the user record (userId is attached) but are NOT automatically accepted. Invitations remain in `invited` state until the user explicitly accepts.
 
 ---
 
@@ -200,7 +200,24 @@ Authorization: Bearer <firebase_id_token>
   ```
 - **Notes**:
   - The invited user does not need to already exist in the database
-  - If the invited email later signs in with Firebase, pending invitations are auto-linked and accepted
+  - If the invited email later signs in with Firebase, pending invitations are auto-linked to the user record but remain in `invited` status until explicitly accepted.
+
+#### Invitation Endpoints (DB-driven)
+
+- **POST** `/api/participants/invite` (admin only)
+  - Create or update an invitation for an email. Does not send email.
+
+- **GET** `/api/participants/invitations/pending`
+  - Returns pending invitations for the authenticated user (by email). Response includes `invitationId`, `tripId`, `tripName`, `invitedBy`, `status`.
+
+- **PATCH** `/api/participants/invitations/accept`
+  - Body: `{ "invitationId": "..." }`
+  - Authenticated user's email must match invitation email. Sets invitation `status = "accepted"` and creates trip membership (Participant) with `status = "accepted"`.
+
+- **PATCH** `/api/participants/invitations/reject`
+  - Body: `{ "invitationId": "..." }`
+  - Authenticated user's email must match invitation email. Sets invitation `status = "rejected"`.
+
 - **Errors**:
   - 400: User already a participant or invitation already sent
   - 403: Current user is not trip admin
