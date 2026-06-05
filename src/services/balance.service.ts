@@ -10,7 +10,7 @@ export const calculateTripBalances = async (tripId: string) => {
   const trip = await Trip.findById(tripId);
   if (!trip) throw new Error("Trip not found");
 
-  const participants = await Participant.find({ tripId: tripId });
+  const participants = await Participant.find({ tripId: tripId }).populate("userId", "displayName email");
   const expenses = await Expense.find({ tripId: tripId });
 
   // Initialize balance map (key: participantId, value: number)
@@ -34,11 +34,14 @@ export const calculateTripBalances = async (tripId: string) => {
   });
 
   // Prepare readable balance objects
-  const result = participants.map((p) => ({
-    participantId: p._id.toString(),
-    name: p.name,
-    balance: Math.round(balances[p._id.toString()] * 100) / 100, // round to 2 decimals
-  }));
+  const result = participants.map((p) => {
+    const user = p.userId as any;
+    return {
+      participantId: p._id.toString(),
+      name: user?.displayName || user?.email || "Unknown",
+      balance: Math.round(balances[p._id.toString()] * 100) / 100, // round to 2 decimals
+    };
+  });
 
   return result;
 };

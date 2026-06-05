@@ -20,10 +20,11 @@ export async function createTrip(req: Request, res: Response) {
       createdBy,
     });
 
-    // Add creator as admin participant with accepted status
+    // Add creator as admin participant with accepted status and email
     await Participant.create({
       userId: createdBy,
       tripId: trip._id,
+      email: req.currentUser.email.toLowerCase(),
       role: "admin",
       status: "accepted",
       acceptedAt: new Date(),

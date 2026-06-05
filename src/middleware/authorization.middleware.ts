@@ -5,7 +5,7 @@ import { Expense } from "../models/expense.model";
 
 async function resolveTripIdFromRequest(req: Request): Promise<string | null> {
   // Look for common places where tripId may appear
-  const maybeTripId = (req.params && (req.params.tripId || req.params.id || req.params.participantId)) || req.body?.tripId;
+  const maybeTripId = (req.params && (req.params.tripId || req.params.id)) || req.body?.tripId;
 
   if (maybeTripId) return maybeTripId as string;
 

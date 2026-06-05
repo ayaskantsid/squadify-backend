@@ -5,7 +5,7 @@ import { User } from "../models/user.model";
 import { Participant } from "../models/participant.model";
 import mongoose from "mongoose";
 
-// Create or reinvite (admin only)
+// Create invitation (admin only)
 export const createInvitation = async (req: Request, res: Response) => {
   try {
     const { tripId, email } = req.body;
@@ -28,23 +28,54 @@ export const createInvitation = async (req: Request, res: Response) => {
     if (!adminParticipant) return res.status(403).json({ message: "Only trip admin can invite participants" });
 
     const emailLower = (email as string).toLowerCase();
+    const invitedUser = await User.findOne({ email: emailLower });
 
-    // upsert invitation: if exists for trip+email -> set status invited and update timestamps
-    let invitation = await Invitation.findOne({ tripId, email: emailLower });
-    if (invitation) {
-      invitation.status = "invited";
-      invitation.invitedBy = currentUser._id;
-      await invitation.save();
-    } else {
-      invitation = await Invitation.create({
-        tripId,
-        email: emailLower,
-        invitedBy: currentUser._id,
-        status: "invited",
-      });
+    // prevent duplicate participant / invitation entries for the same trip
+    const participantQuery: any = { tripId };
+    if (invitedUser) participantQuery.$or = [{ userId: invitedUser._id }, { email: emailLower }];
+    else participantQuery.email = emailLower;
+
+    const existingParticipant = await Participant.findOne(participantQuery);
+    if (existingParticipant) {
+      if (existingParticipant.status === "accepted") {
+        return res.status(400).json({ message: "User is already a participant" });
+      }
+      if (existingParticipant.status === "invited") {
+        return res.status(400).json({ message: "User has already been invited" });
+      }
     }
 
-    return res.status(201).json({ message: "Invitation created", invitation });
+    const invitation = await Invitation.findOne({ tripId, email: emailLower });
+    if (invitation) {
+      if (invitation.status === "invited") {
+        return res.status(400).json({ message: "Invitation has already been sent" });
+      }
+      if (invitation.status === "accepted") {
+        if (existingParticipant) {
+          return res.status(400).json({ message: "User is already a participant" });
+        }
+
+        invitation.status = "invited";
+        invitation.invitedBy = currentUser._id;
+        await invitation.save();
+        return res.status(201).json({ message: "Invitation resent", invitation });
+      }
+      if (invitation.status === "rejected") {
+        invitation.status = "invited";
+        invitation.invitedBy = currentUser._id;
+        await invitation.save();
+        return res.status(201).json({ message: "Invitation resent", invitation });
+      }
+    }
+
+    const newInvitation = await Invitation.create({
+      tripId,
+      email: emailLower,
+      invitedBy: currentUser._id,
+      status: "invited",
+    });
+
+    return res.status(201).json({ message: "Invitation created", invitation: newInvitation });
   } catch (err: any) {
     console.error("createInvitation error", err);
     if (err.code === 11000) {
@@ -66,13 +97,16 @@ export const getPendingInvitations = async (req: Request, res: Response) => {
       .populate("invitedBy", "displayName email")
       .lean();
 
-    const response = invitations.map((inv) => ({
-      invitationId: inv._id,
-      tripId: inv.tripId?._id,
-      tripName: inv.tripId?.name,
-      invitedBy: inv.invitedBy,
-      status: inv.status,
-    }));
+    const response = invitations.map((inv) => {
+      const trip = inv.tripId as any;
+      return {
+        invitationId: inv._id,
+        tripId: trip?._id,
+        tripName: trip?.name,
+        invitedBy: inv.invitedBy,
+        status: inv.status,
+      };
+    });
 
     return res.json(response);
   } catch (err: any) {
