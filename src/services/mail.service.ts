@@ -1,7 +1,13 @@
 import { Resend } from "resend";
 
 const FROM_EMAIL = "Acme <onboarding@resend.dev>";
-const resend = new Resend(process.env.RESEND_API_KEY);
+const resendApiKey = process.env.RESEND_API_KEY;
+let resend: Resend | null = null;
+if (resendApiKey) {
+  resend = new Resend(resendApiKey);
+} else {
+  console.warn("RESEND_API_KEY is not set. Email sending is disabled.");
+}
 
 interface SendEmailOptions {
   to: string;
@@ -10,6 +16,10 @@ interface SendEmailOptions {
 }
 
 async function sendEmail({ to, subject, html }: SendEmailOptions) {
+  if (!resend) {
+    throw new Error("Email service is not configured. RESEND_API_KEY is required.");
+  }
+
   const response = await resend.emails.send({
     from: FROM_EMAIL,
     to,
