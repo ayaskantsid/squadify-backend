@@ -12,7 +12,9 @@ import balanceRoutes from "./routes/balance.routes";
 
 dotenv.config();
 
-const allowedOrigins = process.env.ALLOWED_ORIGIN ? process.env.ALLOWED_ORIGIN.split(",") : [];
+const allowedOrigins = process.env.ALLOWED_ORIGIN
+  ? process.env.ALLOWED_ORIGIN.split(",").map((origin) => origin.trim().replace(/\/$/, ""))
+  : [];
 
 const app = express();
 app.use(
