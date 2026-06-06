@@ -1,9 +1,9 @@
-# Squadify Feature Roadmap
+# Squadfish Feature Roadmap
 
 ## V2
-- **Login by phone**
+- **Login by email**
 - **Invite to trip by trip creator**
-  - Via link or code
+  - Via link or code or app invite
 - **Scan invoice to add expense**
   - Using AI or Image-to-text algorithm
 

@@ -1,7 +1,7 @@
-# Squadify Backend API Documentation
+# Squadfish Backend API Documentation
 
 ## Overview
-Squadify is a trip expense-sharing application backend built with Express.js, TypeScript, and MongoDB. It supports trip management with role-based access control, participant invitations, and expense tracking.
+Squadfish is a trip expense-sharing application backend built with Express.js, TypeScript, and MongoDB. It supports trip management with role-based access control, participant invitations, and expense tracking.
 
 ## Authentication
 
@@ -557,7 +557,7 @@ PORT=5000
 HOST=0.0.0.0
 
 # Database
-MONGODB_URI=mongodb+srv://user:password@cluster.mongodb.net/squadify
+MONGODB_URI=mongodb+srv://user:password@cluster.mongodb.net/Squadfish
 
 # Firebase
 FIREBASE_PROJECT_ID=your-firebase-project
@@ -572,7 +572,7 @@ RESEND_FROM_EMAIL=noreply@yourdomain.com
 FRONTEND_URL=http://localhost:3000
 ```
 
-### Resend Setup
+### Resend Setup (Discontinued)
 
 1. Sign up at [Resend.com](https://resend.com)
 2. Get your API key from the dashboard
