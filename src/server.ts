@@ -58,7 +58,7 @@ app.use("/api/expenses", expenseRoutes);
 app.use('/api/balances', balanceRoutes);
 
 // health check
-app.get("/", (_, res) => res.send("Squadify API (TypeScript) running"));
+app.get("/", (_, res) => res.send("Squadfish API (TypeScript) is running"));
 
 const PORT: number = parseInt(process.env.PORT || "5000") || 5000;
 const HOST: string = process.env.HOST || "0.0.0.0";

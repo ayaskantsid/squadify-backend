@@ -52,7 +52,7 @@ export async function sendTripInvitationEmail(data: InvitationEmailData) {
     const emailContent = `
       <h2>You're invited to a trip!</h2>
       <p>Hi ${recipientName || "there"},</p>
-      <p><strong>${inviterName}</strong> has invited you to join the trip <strong>"${tripName}"</strong> on Squadify.</p>
+      <p><strong>${inviterName}</strong> has invited you to join the trip <strong>"${tripName}"</strong> on Squadfish.</p>
       <p>
         <a href="${invitationLink}" style="background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">
           Accept Invitation
@@ -62,12 +62,12 @@ export async function sendTripInvitationEmail(data: InvitationEmailData) {
       <p>If you didn't expect this invitation, you can safely ignore this email.</p>
       <br/>
       <p>Happy splitting! 🎉</p>
-      <p>Team Squadify</p>
+      <p>Team Squadfish</p>
     `;
 
     const response = await sendEmail({
       to: recipientEmail,
-      subject: `${inviterName} invited you to "${tripName}" on Squadify`,
+      subject: `${inviterName} invited you to "${tripName}" on Squadfish`,
       html: emailContent,
     });
 
@@ -96,12 +96,12 @@ export async function sendInvitationAcceptedEmail(data: {
       <p>You can now start planning the trip together!</p>
       <p>
         <a href="${dashboardLink}" style="background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">
-          Open Squadify
+          Open Squadfish
         </a>
       </p>
       <br/>
       <p>Happy splitting! 🎉</p>
-      <p>Team Squadify</p>
+      <p>Team Squadfish</p>
     `;
 
     const response = await sendEmail({
