@@ -3,7 +3,7 @@ version: '3.9'
 services:
   mongo:
     image: mongo:6
-    container_name: squadify-mongo
+    container_name: squadfish-mongo
     restart: always
     ports:
       - "27017:27017"
@@ -15,7 +15,7 @@ services:
 
   mongo-express:
     image: mongo-express
-    container_name: squadify-mongo-express
+    container_name: squadfish-mongo-express
     restart: always
     ports:
       - "8081:8081"

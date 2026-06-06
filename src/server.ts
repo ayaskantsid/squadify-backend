@@ -12,8 +12,25 @@ import balanceRoutes from "./routes/balance.routes";
 
 dotenv.config();
 
+const allowedOrigins = process.env.ALLOWED_ORIGIN ? process.env.ALLOWED_ORIGIN.split(",") : [];
+
 const app = express();
-app.use(cors());
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin) {
+        return callback(null, true);
+      }
+
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      callback(new Error("Not allowed by CORS"));
+    },
+    credentials: true
+  })
+);
 app.use(express.json());
 
 // connect DB
