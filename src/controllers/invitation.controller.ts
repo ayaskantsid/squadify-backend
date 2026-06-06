@@ -93,7 +93,7 @@ export const getPendingInvitations = async (req: Request, res: Response) => {
     if (!email) return res.status(400).json({ message: "User has no email" });
 
     const invitations = await Invitation.find({ email, status: "invited" })
-      .populate("tripId", "name")
+      .populate("tripId", "name description")
       .populate("invitedBy", "displayName email")
       .lean();
 
@@ -103,6 +103,7 @@ export const getPendingInvitations = async (req: Request, res: Response) => {
         invitationId: inv._id,
         tripId: trip?._id,
         tripName: trip?.name,
+        tripDescription: trip?.description,
         invitedBy: inv.invitedBy,
         status: inv.status,
       };
