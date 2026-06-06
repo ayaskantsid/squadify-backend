@@ -12,41 +12,28 @@ import balanceRoutes from "./routes/balance.routes";
 
 dotenv.config();
 
-const allowedOrigins = process.env.ALLOWED_ORIGIN
-  ? process.env.ALLOWED_ORIGIN.split(",").map((origin) => origin.trim().replace(/\/$/, ""))
-  : [];
+const allowedOrigins = (
+  process.env.ALLOWED_ORIGINS ?? ""
+)
+  .split(",")
+  .map(origin => origin.trim().replace(/\/$/, ""))
+  .filter(Boolean);
 
 const app = express();
 app.use(
   cors({
-    // origin: (origin, callback) => {
-    //   // Allow requests with no origin (Postman, mobile apps, etc.)
-    //   if (!origin) {
-    //     return callback(null, true);
-    //   }
-
-    //   if (allowedOrigins.includes(origin)) {
-    //     return callback(null, true);
-    //   }
-
-    //   callback(new Error(`Origin ${origin} not allowed by CORS`));
-    // }
     origin: (origin, callback) => {
-      console.log("Incoming Origin:", origin);
-
+      // Allow requests with no origin (Postman, mobile apps, etc.)
       if (!origin) {
         return callback(null, true);
       }
 
       if (allowedOrigins.includes(origin)) {
-        console.log("Origin allowed");
         return callback(null, true);
       }
 
-      console.log("Origin blocked");
       callback(new Error(`Origin ${origin} not allowed by CORS`));
-    },
-    credentials: true
+    }
   })
 );
 app.use(express.json());
