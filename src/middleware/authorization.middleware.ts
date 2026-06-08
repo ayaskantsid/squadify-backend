@@ -4,19 +4,28 @@ import { Participant as ParticipantModel } from "../models/participant.model";
 import { Expense } from "../models/expense.model";
 
 async function resolveTripIdFromRequest(req: Request): Promise<string | null> {
-  // Look for common places where tripId may appear
-  const maybeTripId = (req.params && (req.params.tripId || req.params.id)) || req.body?.tripId;
+  // If the route explicitly provides tripId, use it.
+  if (req.params?.tripId) {
+    return req.params.tripId as string;
+  }
 
-  if (maybeTripId) return maybeTripId as string;
+  // For trip routes, params.id is the tripId.
+  if (req.baseUrl?.includes("/api/trips") && req.params?.id) {
+    return req.params.id as string;
+  }
 
-  // if expense id provided in params.id or req.params.id, fetch expense to get tripId
-  const expenseId = req.params?.id || req.params?.expenseId || req.body?.expenseId;
-  if (expenseId) {
-    const expense = await Expense.findById(expenseId).lean();
+  // For expense routes, params.id is an expenseId, so resolve to tripId.
+  if (req.baseUrl?.includes("/api/expenses") && req.params?.id) {
+    const expense = await Expense.findById(req.params.id).lean();
     return expense?.tripId?.toString() || null;
   }
 
-  // if participantId provided, fetch participant
+  // If body contains tripId, use it.
+  if (req.body?.tripId) {
+    return req.body.tripId as string;
+  }
+
+  // If participantId provided, fetch participant to get tripId.
   const participantId = req.params?.participantId || req.body?.participantId;
   if (participantId) {
     const participant = await ParticipantModel.findById(participantId).lean();
