@@ -16,15 +16,35 @@ export const getExpensesByTrip = async (req: Request, res: Response) => {
     }
 
     const expenses = await Expense.find({ tripId: tripId })
-      .populate("paidBy", "name")
+      .populate({
+        path: "paidBy",
+        populate: {
+          path: "userId",
+          select: "displayName email"
+        }
+      })
       .populate("splits.participantId", "name")
+      .lean()
       .exec();
 
     if(expenses.length === 0) {
       return res.status(404).json({ message: "No expenses found for this trip" });
-    } else {
-        return res.status(200).json(expenses);
     }
+
+    const response = expenses.map((expense) => {
+      const paidBy = expense.paidBy as any;
+      const user = paidBy?.userId as any;
+      return {
+        ...expense,
+        paidBy: {
+          _id: paidBy?._id,
+          displayName: user?.displayName || null,
+          email: user?.email || null,
+        },
+      };
+    });
+
+    return res.status(200).json(response);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -42,16 +62,31 @@ export const getExpenseById = async (req: Request, res: Response) => {
     }
 
     const expense = await Expense.findById(id)
-      .populate("paidBy", "name")
+      .populate({
+        path: "paidBy",
+        populate: {
+          path: "userId",
+          select: "displayName email"
+        }
+      })
       .populate("splits.participantId", "name");
 
     if (!expense) {
       return res.status(404).json({ error: "Expense not found." });
     }
 
+    const expenseData = expense.toObject();
+    const paidBy = expenseData.paidBy as any;
+    const user = paidBy?.userId as any;
+    expenseData.paidBy = {
+      _id: paidBy?._id,
+      displayName: user?.displayName || null,
+      email: user?.email || null,
+    } as any;
+
     res.status(200).json({
       message: "Expense details fetched successfully.",
-      data: expense,
+      data: expenseData,
     });
   } catch (err: any) {
     console.error("Error fetching expense:", err);

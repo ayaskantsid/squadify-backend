@@ -5,7 +5,7 @@ Squadfish is a trip expense-sharing application backend built with Express.js, T
 
 ## Authentication
 
-All API endpoints (except `/api/auth/me`) require Firebase authentication. Include the Firebase ID token in the `Authorization` header:
+All API endpoints require Firebase authentication. Include the Firebase ID token in the `Authorization` header:
 
 ```
 Authorization: Bearer <firebase_id_token>
@@ -181,7 +181,7 @@ Authorization: Bearer <firebase_id_token>
   ```json
   {
     "tripId": "trip-id",
-    "userEmail": "friend@example.com"
+    "email": "friend@example.com"
   }
   ```
 - **Response** (201):
@@ -389,10 +389,18 @@ Authorization: Bearer <firebase_id_token>
     "tripId": "trip-id",
     "description": "Hotel booking",
     "amount": 300.00,
-    "currency": "USD",
-    "paidBy": "user-id"
+    "expenseDate": "2026-06-08T20:00:00.000Z",
+    "paidBy": "participant-id",
+    "splits": [
+      { "participantId": "participant-1-id", "share": 180.00 },
+      { "participantId": "participant-2-id", "share": 120.00 }
+    ]
   }
   ```
+- **Notes**:
+  - `expenseDate` is required.
+  - `paidBy` must be a `Participant` id.
+  - `splits` is optional; if omitted, the backend will split the expense equally among all trip participants.
 - **Response** (201): Expense object
 
 #### Get Trip Expenses
@@ -431,8 +439,14 @@ Authorization: Bearer <firebase_id_token>
 ### Balance Endpoints
 
 #### Get Settlement
-- **GET** `/api/balances/trip/:tripId`
+- **GET** `/api/balances/:tripId`
 - **Description**: Get settlement details for a trip
+- **Auth**: Required
+- **Response** (200): Settlement breakdown
+
+#### Get Settlement Details
+- **GET** `/api/balances/:tripId/settlements`
+- **Description**: Get minimal settlement instructions for a trip
 - **Auth**: Required
 - **Response** (200): Settlement breakdown
 
@@ -491,8 +505,12 @@ Authorization: Bearer <firebase_id_token>
   tripId: ObjectId (ref: Trip),
   description: string,
   amount: number,
-  currency: string,
-  paidBy: ObjectId (ref: User),
+  paidBy: ObjectId (ref: Participant),
+  expenseDate: Date,
+  splits: Array<{
+    participantId: ObjectId (ref: Participant),
+    share: number
+  }>,
   createdAt: Date,
   updatedAt: Date
 }
@@ -557,12 +575,15 @@ PORT=5000
 HOST=0.0.0.0
 
 # Database
-MONGODB_URI=mongodb+srv://user:password@cluster.mongodb.net/Squadfish
+MONGO_URI=mongodb+srv://user:password@cluster.mongodb.net/squadfish
+DB_NAME=squadfish
+ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,http://192.168.1.41:5173,https://squadfish-web.vercel.app
 
 # Firebase
-FIREBASE_PROJECT_ID=your-firebase-project
-FIREBASE_PRIVATE_KEY=your-firebase-key
-FIREBASE_CLIENT_EMAIL=your-firebase-email
+# Use either inline JSON or a local service account key file path
+FIREBASE_SERVICE_ACCOUNT_KEY_PATH=./firebase-service-account-key.json
+# or
+# FIREBASE_SERVICE_ACCOUNT_KEY={...json...}
 
 # Email Service (Resend)
 RESEND_API_KEY=re_your_resend_api_key
