@@ -165,22 +165,71 @@ export const addExpense = async (req: Request, res: Response) => {
 /**
  * @route   PUT /api/expenses/:id
  * @desc    Update an existing expense
+ *
+ * Uses findById + expense.save() instead of findByIdAndUpdate so that:
+ *  1. The pre('save') validation hook actually runs.
+ *  2. Splits are recalculated whenever the amount changes or no splits are sent.
+ *  3. Custom splits are validated against the (new) amount before saving.
  */
 export const updateExpense = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const updates = req.body;
+    const { description, amount, paidBy, splits, expenseDate } = req.body;
 
-    const expense = await Expense.findByIdAndUpdate(id, updates, { new: true })
-      .populate("paidBy", "name")
-      .populate("splits.participantId", "name")
-      .exec();
-
+    // 1️⃣ Fetch the existing document so we can mutate and re-save
+    const expense = await Expense.findById(id);
     if (!expense) {
       return res.status(404).json({ error: "Expense not found" });
     }
 
-    res.status(200).json({ message: "Expense updated successfully", expense });
+    // 2️⃣ Apply scalar field updates only when explicitly provided
+    if (description !== undefined) expense.description = description;
+    if (paidBy !== undefined) expense.paidBy = paidBy;
+    if (expenseDate !== undefined) {
+      const parsed = new Date(expenseDate);
+      if (isNaN(parsed.getTime())) {
+        return res.status(400).json({ error: "Invalid expenseDate format." });
+      }
+      expense.expenseDate = parsed;
+    }
+
+    // 3️⃣ Determine the effective amount (new or existing)
+    const effectiveAmount = amount !== undefined ? Number(amount) : expense.amount;
+    if (amount !== undefined) expense.amount = effectiveAmount;
+
+    // 4️⃣ Recalculate / validate splits
+    if (!splits || splits.length === 0) {
+      // No splits sent → regenerate equal split across all trip participants
+      const participants = await Participant.find({ tripId: expense.tripId });
+      if (!participants || participants.length === 0) {
+        return res.status(400).json({ error: "No participants found for this trip." });
+      }
+      const equalShare = Number((effectiveAmount / participants.length).toFixed(2));
+      expense.splits = participants.map((p) => ({
+        participantId: p._id,
+        share: equalShare,
+      })) as any;
+    } else {
+      // Custom splits sent → validate they sum to the effective amount
+      const totalShare = splits.reduce((sum: number, s: any) => sum + Number(s.share), 0);
+      if (Math.abs(totalShare - effectiveAmount) > 0.01) {
+        return res.status(400).json({
+          error: `Total of custom splits (${totalShare}) does not match expense amount (${effectiveAmount}).`,
+        });
+      }
+      expense.splits = splits;
+    }
+
+    // 5️⃣ Save — triggers pre('save') hook for final validation
+    await expense.save();
+
+    // 6️⃣ Re-fetch with populated fields for the response
+    const populated = await Expense.findById(id)
+      .populate("paidBy", "name")
+      .populate("splits.participantId", "name")
+      .exec();
+
+    res.status(200).json({ message: "Expense updated successfully", expense: populated });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

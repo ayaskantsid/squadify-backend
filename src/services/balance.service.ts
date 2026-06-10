@@ -4,42 +4,62 @@ import { Trip } from "../models/trip.model";
 
 /**
  * Calculate the net balances for a given trip.
- * Each participant will have a final balance showing how much they owe or are owed.
+ * Positive balance  → participant is owed money (they paid more than their share).
+ * Negative balance  → participant owes money (they consumed more than they paid).
  */
 export const calculateTripBalances = async (tripId: string) => {
   const trip = await Trip.findById(tripId);
   if (!trip) throw new Error("Trip not found");
 
-  const participants = await Participant.find({ tripId: tripId }).populate("userId", "displayName email");
-  const expenses = await Expense.find({ tripId: tripId });
+  const participants = await Participant.find({ tripId }).populate("userId", "displayName email");
+  const expenses = await Expense.find({ tripId });
 
-  // Initialize balance map (key: participantId, value: number)
-  const balances: Record<string, number> = {};
-  participants.forEach(p => {
-    balances[p._id.toString()] = 0;
+  // Initialize balance map (key: participantId string, value: net balance)
+  const balanceMap: Record<string, number> = {};
+  participants.forEach((p) => {
+    balanceMap[p._id.toString()] = 0;
   });
 
   // Iterate over all expenses and adjust balances
-  expenses.forEach(exp => {
+  expenses.forEach((exp) => {
     const paidBy = exp.paidBy.toString();
     const totalAmount = exp.amount;
 
-    // The payer initially pays everything
-    balances[paidBy] += totalAmount;
+    // Guard: warn if splits are missing or don't sum correctly (should not happen after model fix)
+    if (!exp.splits || exp.splits.length === 0) {
+      console.warn(`[balance] Expense ${exp._id} has no splits — skipping. Check data integrity.`);
+      return;
+    }
 
-    // Each participant owes their share
-    exp.splits.forEach(split => {
-      balances[split.participantId.toString()] -= split.share;
+    const splitTotal = exp.splits.reduce((sum, s) => sum + s.share, 0);
+    if (Math.abs(splitTotal - totalAmount) > 0.01) {
+      console.warn(
+        `[balance] Expense ${exp._id} splits (${splitTotal}) don't match amount (${totalAmount}) — skipping.`
+      );
+      return;
+    }
+
+    // Payer gets credited the full amount
+    if (balanceMap[paidBy] !== undefined) {
+      balanceMap[paidBy] += totalAmount;
+    }
+
+    // Each participant is debited their share
+    exp.splits.forEach((split) => {
+      const pid = split.participantId.toString();
+      if (balanceMap[pid] !== undefined) {
+        balanceMap[pid] -= split.share;
+      }
     });
   });
 
-  // Prepare readable balance objects
+  // Build readable balance array
   const result = participants.map((p) => {
     const user = p.userId as any;
     return {
       participantId: p._id.toString(),
       name: user?.displayName || user?.email || "Unknown",
-      balance: Math.round(balances[p._id.toString()] * 100) / 100, // round to 2 decimals
+      balance: Math.round(balanceMap[p._id.toString()] * 100) / 100,
     };
   });
 
@@ -48,45 +68,64 @@ export const calculateTripBalances = async (tripId: string) => {
 
 /**
  * Compute minimal transactions to settle all balances.
- * Greedy algorithm based on sorting debtors and creditors.
+ * Uses a greedy two-pointer algorithm on sorted debtors and creditors.
  */
 export const calculateMinimalSettlements = async (tripId: string) => {
   const balances = await calculateTripBalances(tripId);
-  const balanceBeforeSettlement = balances.map(b => ({ ...b })); // backup of original balances
 
-  const debtors = balances.filter((b) => b.balance < 0).sort((a, b) => a.balance - b.balance);
-  const creditors = balances.filter((b) => b.balance > 0).sort((a, b) => b.balance - a.balance);
+  // Deep-copy for the "before" snapshot — the originals will be mutated during settlement
+  const balanceBeforeSettlement = balances.map((b) => ({ ...b }));
 
-  const settlements: {
-    from: string;
-    to: string;
-    amount: number;
-  }[] = [];
+  // Separate into debtors (owe money) and creditors (are owed money)
+  // Bug fix: we deep-copy each entry so mutations don't affect `balances` or each other's list
+  const debtors = balances
+    .filter((b) => b.balance < -0.001)
+    .map((b) => ({ ...b }))
+    .sort((a, b) => a.balance - b.balance); // most negative first
 
-  let i = 0; // debtor index
-  let j = 0; // creditor index
+  const creditors = balances
+    .filter((b) => b.balance > 0.001)
+    .map((b) => ({ ...b }))
+    .sort((a, b) => b.balance - a.balance); // highest first
+
+  const settlements: { from: string; fromId: string; to: string; toId: string; amount: number }[] = [];
+
+  let i = 0;
+  let j = 0;
 
   while (i < debtors.length && j < creditors.length) {
     const debtor = debtors[i];
     const creditor = creditors[j];
+
     const amount = Math.min(-debtor.balance, creditor.balance);
 
-    if (amount > 0) {
+    if (amount > 0.001) {
       settlements.push({
         from: debtor.name,
+        fromId: debtor.participantId,
         to: creditor.name,
+        toId: creditor.participantId,
         amount: Math.round(amount * 100) / 100,
       });
 
-      // Update balances
       debtor.balance += amount;
       creditor.balance -= amount;
     }
 
-    // Move pointers when a balance is settled
-    if (Math.abs(debtor.balance) < 0.01) i++;
-    if (Math.abs(creditor.balance) < 0.01) j++;
+    // Advance pointers once a balance is effectively zero
+    // Bug fix: always advance at least one pointer to prevent infinite loop
+    const debtorSettled = Math.abs(debtor.balance) < 0.001;
+    const creditorSettled = Math.abs(creditor.balance) < 0.001;
+
+    if (debtorSettled) i++;
+    if (creditorSettled) j++;
+
+    // Safety: if neither settled (amount was ~0 somehow), advance both to avoid infinite loop
+    if (!debtorSettled && !creditorSettled) {
+      i++;
+      j++;
+    }
   }
 
-  return { balanceBeforeSettlement, balances, settlements };
+  return { balanceBeforeSettlement, settlements };
 };

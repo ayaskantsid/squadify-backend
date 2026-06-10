@@ -38,13 +38,17 @@ const expenseSchema = new Schema<IExpense>(
   { timestamps: true }
 );
 
-export const Expense = model<IExpense>("Expense", expenseSchema);
-
 // Pre-save hook to validate splits
+// ⚠️ MUST be registered before model() is called — Mongoose ignores hooks added after compilation.
 expenseSchema.pre("save", function (next) {
+  if (!this.splits || this.splits.length === 0) {
+    return next(new Error("Expense must have at least one split."));
+  }
   const totalSplit = this.splits.reduce((sum, s) => sum + s.share, 0);
-  if (totalSplit !== this.amount) {
-    return next(new Error("Total of splits must equal total expense amount."));
+  // Use epsilon comparison to avoid floating-point precision issues (e.g. 333.33 * 3 ≠ 1000 exactly)
+  const diff = Math.abs(totalSplit - this.amount);
+  if (diff > 0.01) {
+    return next(new Error(`Total of splits (${totalSplit}) must equal total expense amount (${this.amount}).`));
   }
   next();
 });
@@ -60,3 +64,5 @@ expenseSchema.virtual('splitType').get(function () {
 // Ensure virtuals are included in JSON and Object output
 expenseSchema.set('toJSON', { virtuals: true });
 expenseSchema.set('toObject', { virtuals: true });
+
+export const Expense = model<IExpense>("Expense", expenseSchema);
