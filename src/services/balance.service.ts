@@ -69,15 +69,48 @@ export const calculateTripBalances = async (tripId: string) => {
 /**
  * Compute minimal transactions to settle all balances.
  * Uses a greedy two-pointer algorithm on sorted debtors and creditors.
+ * Also returns per-participant expenditure stats (totalSpent, paymentCount).
  */
 export const calculateMinimalSettlements = async (tripId: string) => {
+  // Load participants and expenses once — reused for both balance and stats
+  const participants = await Participant.find({ tripId }).populate("userId", "displayName email");
+  const expenses = await Expense.find({ tripId });
+
   const balances = await calculateTripBalances(tripId);
 
   // Deep-copy for the "before" snapshot — the originals will be mutated during settlement
   const balanceBeforeSettlement = balances.map((b) => ({ ...b }));
 
+  // ── Participant expenditure stats ──────────────────────────────────────────
+  // totalSpent   = sum of expense amounts where this participant is the payer
+  // paymentCount = number of expenses they paid for
+  const spentMap: Record<string, { totalSpent: number; paymentCount: number }> = {};
+  participants.forEach((p) => {
+    spentMap[p._id.toString()] = { totalSpent: 0, paymentCount: 0 };
+  });
+
+  expenses.forEach((exp) => {
+    const paidBy = exp.paidBy.toString();
+    if (spentMap[paidBy] !== undefined) {
+      spentMap[paidBy].totalSpent += exp.amount;
+      spentMap[paidBy].paymentCount += 1;
+    }
+  });
+
+  const participantStats = participants.map((p) => {
+    const user = p.userId as any;
+    const stats = spentMap[p._id.toString()];
+    return {
+      participantId: p._id.toString(),
+      name: user?.displayName || user?.email || "Unknown",
+      totalSpent: Math.round(stats.totalSpent * 100) / 100,
+      paymentCount: stats.paymentCount,
+    };
+  });
+  // ──────────────────────────────────────────────────────────────────────────
+
   // Separate into debtors (owe money) and creditors (are owed money)
-  // Bug fix: we deep-copy each entry so mutations don't affect `balances` or each other's list
+  // Deep-copy each entry so mutations don't affect the original balances array
   const debtors = balances
     .filter((b) => b.balance < -0.001)
     .map((b) => ({ ...b }))
@@ -113,7 +146,6 @@ export const calculateMinimalSettlements = async (tripId: string) => {
     }
 
     // Advance pointers once a balance is effectively zero
-    // Bug fix: always advance at least one pointer to prevent infinite loop
     const debtorSettled = Math.abs(debtor.balance) < 0.001;
     const creditorSettled = Math.abs(creditor.balance) < 0.001;
 
@@ -127,5 +159,5 @@ export const calculateMinimalSettlements = async (tripId: string) => {
     }
   }
 
-  return { balanceBeforeSettlement, settlements };
+  return { balanceBeforeSettlement, participantStats, settlements };
 };
