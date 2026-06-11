@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { Expense } from "../models/expense.model";
 import { Trip } from "../models/trip.model";
 import { Participant } from "../models/participant.model";
+import { scanReceiptWithAI } from "../services/ai.service";
 
 /**
  * @route   GET /api/expenses/:tripId
@@ -251,5 +252,39 @@ export const deleteExpense = async (req: Request, res: Response) => {
     res.status(200).json({ message: "Expense deleted successfully" });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
+  }
+};
+
+/**
+ * @route   POST /api/expenses/scan-receipt
+ * @desc    Upload a receipt image and extract expense data using Gemini Vision.
+ *          Does NOT create an expense — returns prefill data for the frontend.
+ * @body    multipart/form-data: receipt (image file, max 10 MB)
+ */
+export const scanReceipt = async (req: Request, res: Response): Promise<void> => {
+  try {
+    // upload.middleware guarantees req.file is present by this point
+    const file = req.file!;
+    console.log(`[scanReceipt] Received file: ${file.originalname} (${file.mimetype}, ${file.size} bytes)`);
+
+    const extracted = await scanReceiptWithAI(file.buffer, file.mimetype);
+
+    if (!extracted) {
+      console.warn("[scanReceipt] Gemini returned an unparseable response");
+      res.status(422).json({ success: false, message: "Unable to scan receipt" });
+      return;
+    }
+
+    console.log("[scanReceipt] Extracted data:", extracted);
+
+    res.status(200).json({
+      success: true,
+      description: extracted.description,
+      amount: extracted.amount,
+      date: extracted.date,
+    });
+  } catch (err: any) {
+    console.error("[scanReceipt] Error scanning receipt:", err.message ?? err);
+    res.status(500).json({ success: false, message: "Unable to scan receipt" });
   }
 };
