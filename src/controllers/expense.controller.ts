@@ -3,6 +3,7 @@ import { Expense } from "../models/expense.model";
 import { Trip } from "../models/trip.model";
 import { Participant } from "../models/participant.model";
 import { scanReceiptWithAI } from "../services/ai.service";
+import { recordScanUsage, getScanQuota } from "../middleware/scan-rate-limit.middleware";
 
 /**
  * @route   GET /api/expenses/:tripId
@@ -277,14 +278,38 @@ export const scanReceipt = async (req: Request, res: Response): Promise<void> =>
 
     console.log("[scanReceipt] Extracted data:", extracted);
 
+    // Record usage ONLY after a successful scan — failed scans don't consume quota
+    const remaining = await recordScanUsage(res.locals.scanDateKey, res.locals.scanUserId);
+
     res.status(200).json({
       success: true,
       description: extracted.description,
       amount: extracted.amount,
       date: extracted.date,
+      scansRemaining: remaining.userRemaining,
     });
   } catch (err: any) {
     console.error("[scanReceipt] Error scanning receipt:", err.message ?? err);
     res.status(500).json({ success: false, message: "Unable to scan receipt" });
+  }
+};
+
+/**
+ * @route   GET /api/expenses/scan-receipt/quota
+ * @desc    Check how many receipt scans the user (and the app globally) have remaining today.
+ *          Does NOT consume a scan — safe to call on page load.
+ */
+export const getScanReceiptQuota = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = req.currentUser?._id?.toString();
+    const quota = await getScanQuota(userId);
+
+    res.status(200).json({
+      success: true,
+      ...quota,
+    });
+  } catch (err: any) {
+    console.error("[getScanReceiptQuota] Error:", err.message ?? err);
+    res.status(500).json({ success: false, message: "Unable to check scan quota" });
   }
 };

@@ -434,8 +434,70 @@ Authorization: Bearer <firebase_id_token>
 - **Auth**: Required
 - **Response** (200): Success message
 
----
+#### Scan Receipt (AI-powered)
+- **POST** `/api/expenses/scan-receipt`
+- **Description**: Upload a receipt image and extract expense data using Gemini Vision AI. Does **NOT** create an expense — returns prefill data for the frontend form.
+- **Auth**: Required
+- **Content-Type**: `multipart/form-data`
+- **Request Body**:
+  - `receipt` (file): Image file (JPEG, PNG, WebP). Max 10 MB.
+- **Response** (200):
+  ```json
+  {
+    "success": true,
+    "description": "Starbucks",
+    "amount": 12.50,
+    "date": "2026-06-13",
+    "scansRemaining": 2
+  }
+  ```
+- **Rate Limiting** (429):
+  ```json
+  {
+    "success": false,
+    "message": "You've used all 3 receipt scans for today. Try again tomorrow.",
+    "remaining": 0,
+    "retryAfter": "midnight PT"
+  }
+  ```
+- **Rate Limits**:
+  - **Per-user**: 3 scans per day
+  - **Global (app-wide)**: 18 scans per day (Gemini free tier = 20 RPD)
+  - Resets at **midnight Pacific Time**
+  - Only successful scans count against limits (failed/unparseable results don't consume quota)
+- **Errors**:
+  - 422: Gemini returned an unparseable response
+  - 429: Daily scan limit exceeded (per-user or global)
+  - 500: Internal server error
+- **Notes**:
+  - The `scansRemaining` field in success responses tells the frontend how many scans the user has left today
+  - Frontend should disable the "Scan Receipt" button when `scansRemaining === 0`
+  - Frontend should handle 429 responses gracefully with a user-friendly message
 
+#### Get Scan Receipt Quota
+- **GET** `/api/expenses/scan-receipt/quota`
+- **Description**: Check how many receipt scans the current user (and the app globally) have remaining today. Does **NOT** consume a scan — safe to call on page load or when opening the expense menu.
+- **Auth**: Required
+- **Response** (200):
+  ```json
+  {
+    "success": true,
+    "userLimit": 3,
+    "userUsed": 1,
+    "userRemaining": 2,
+    "globalLimit": 18,
+    "globalUsed": 5,
+    "globalRemaining": 13,
+    "canScan": true,
+    "resetsAt": "midnight PT"
+  }
+  ```
+- **Notes**:
+  - Use the `canScan` boolean to enable/disable the "Scan Receipt" button in the UI
+  - Call this endpoint when the user opens the add-expense menu or the trip details page
+  - `userRemaining` is the most relevant field for user-facing messaging (e.g. "2 scans left today")
+
+---
 ### Balance Endpoints
 
 #### Get Settlement
@@ -516,6 +578,21 @@ Authorization: Bearer <firebase_id_token>
 }
 ```
 
+### ScanUsage (Rate Limiting)
+```typescript
+{
+  _id: ObjectId,
+  scopeId: string,         // "global" for app-wide counter, or User ObjectId string for per-user
+  dateKey: string,         // "YYYY-MM-DD" in Pacific Time (matches Gemini's daily reset)
+  count: number,           // Number of scans consumed today
+  lastScanAt: Date,        // Most recent scan timestamp (drives TTL auto-cleanup)
+  createdAt: Date,
+  updatedAt: Date
+}
+```
+**Compound Index**: `scopeId + dateKey` (unique — fast lookups for daily quota checks)
+**TTL Index**: `lastScanAt` (auto-deletes records older than 30 days)
+
 ---
 
 ## Access Control Rules
@@ -591,6 +668,9 @@ RESEND_FROM_EMAIL=noreply@yourdomain.com
 
 # Frontend
 FRONTEND_URL=http://localhost:3000
+
+# Gemini AI (receipt scanning)
+GEMINI_API_KEY=your_gemini_api_key
 ```
 
 ### Resend Setup (Discontinued)
